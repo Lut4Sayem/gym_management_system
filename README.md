@@ -58,4 +58,20 @@ A web-based Gym Management System built using **PHP** and **MySQL**, designed to
 
 ---
 
+## ✍️ Notes
+- Session management handled via session_check.php
+- Secure login with redirects using dashboard_redirect.php
+- Frontend styling is minimal and in assets/css/style.css
+
+## 📌 To Do
+- Add user registration and password encryption
+- Add error handling and form validations
+- Make UI mobile responsive
+
+## 👨‍💻 Contributors
+- MD. LUTFUR RAHMAN (Backend + DB + Overall Flow)
+- MD. Kamrul Hasan (Receptionist_panel)
+- Sadik Ullah (Trainer_panel)
+
+
 
