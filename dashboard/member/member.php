@@ -79,123 +79,118 @@ $bm_result = $bm_stmt->get_result();
 <head>
     <meta charset="UTF-8">
     <title>Member Dashboard | Gym Management System</title>
+    <link rel="stylesheet" href="../../assets/css/style.css">
     <style>
-        table {
-            border-collapse: collapse;
-            width: 60%;
-        }
-        td, th {
-            border: 1px solid #333;
-            padding: 10px;
-        }
-        input[readonly], textarea[readonly] {
-            background-color: #f0f0f0;
-            border: none;
-        }
-        .action-buttons {
-            margin-top: 15px;
+        /* Page-specific background - keeping this inline to ensure it works */
+        body {
+            background-image: url('../../images/getimg_ai_img-Xon6oqcqWms7Iv4DJHIfh.jpeg');
+            background-size: cover;
+            background-position: center;
         }
     </style>
-    <script>
-        function enableEdit() {
-            const editableFields = ['email', 'address', 'age', 'password'];
-            editableFields.forEach(name => {
-                const field = document.querySelector(`[name="${name}"]`);
-                if (field) field.removeAttribute('readonly');
-            });
-            document.getElementById('editBtn').style.display = 'none';
-            document.getElementById('updateBtn').style.display = 'inline';
-        }
-
-        function confirmUpdate() {
-            return confirm("Are you sure you want to update your information?");
-        }
-
-        function confirmDelete(measurementId) {
-            if (confirm("Are you sure you want to delete this measurement?")) {
-                window.location.href = `delete_measurement.php?id=${measurementId}`;
-            }
-        }
-    </script>
+    <script src="../../assets/js/script.js"></script>
 </head>
 <body>
 
-<h2>Welcome, <?php echo htmlspecialchars($user['Name']); ?>!</h2>
+<div class="container" style="background: rgba(255, 255, 255, 0.95); border-radius: 10px; padding: 30px; margin-top: 60px;">
+    <h2>Welcome, <?php echo htmlspecialchars($user['Name']); ?>!</h2>
 
-<!-- Membership Plan Info -->
-<h3>Your Membership Plan</h3>
-<?php if ($plan): ?>
-    <table>
-        <tr><th>Plan Name</th><td><?php echo $plan['Name']; ?></td></tr>
-        <tr><th>Duration</th><td><?php echo $plan['Duration']; ?> days</td></tr>
-        <tr><th>Amount</th><td>৳<?php echo $plan['Amount']; ?></td></tr>
-    </table>
-<?php else: ?>
-    <p>You are not assigned a membership plan.</p>
-<?php endif; ?>
-
-<!-- Member Info Form -->
-<h3>Your Information</h3>
-<form method="POST" onsubmit="return confirmUpdate();">
-    <table>
-        <tr>
-            <th>Email</th>
-            <td><input type="email" name="email" value="<?php echo htmlspecialchars($user['Email']); ?>" readonly required></td>
-        </tr>
-        <tr>
-            <th>Address</th>
-            <td><textarea name="address" rows="3" cols="30" readonly required><?php echo htmlspecialchars($user['Address']); ?></textarea></td>
-        </tr>
-        <tr>
-            <th>Age</th>
-            <td><input type="number" name="age" value="<?php echo htmlspecialchars($user['Age']); ?>" readonly required></td>
-        </tr>
-        <tr>
-            <th>Password</th>
-            <td><input type="text" name="password" value="<?php echo htmlspecialchars($user['Password']); ?>" readonly required></td>
-        </tr>
-        <tr>
-            <th>Gender</th>
-            <td><input type="text" name="gender" value="<?php echo htmlspecialchars($user['Gender']); ?>" readonly></td>
-        </tr>
-    </table>
-
-    <div class="action-buttons">
-        <button type="button" id="editBtn" onclick="enableEdit()">Edit</button>
-        <button type="submit" name="update" id="updateBtn" style="display: none;">Update</button>
+    <!-- Membership Plan Info -->
+    <div class="card">
+        <h3>Your Membership Plan</h3>
+        <?php if ($plan): ?>
+            <table class="table">
+                <tr><th>Plan Name</th><td><?php echo $plan['Name']; ?></td></tr>
+                <tr><th>Duration</th><td><?php echo $plan['Duration']; ?> days</td></tr>
+                <tr><th>Amount</th><td>৳<?php echo $plan['Amount']; ?></td></tr>
+            </table>
+        <?php else: ?>
+            <p>You are not assigned a membership plan.</p>
+        <?php endif; ?>
     </div>
-</form>
 
-<!-- Body Measurements Table -->
-<h3>Your Body Measurements</h3>
-<?php if ($bm_result->num_rows > 0): ?>
-    <table>
-        <tr>
-            <th>Height (cm)</th>
-            <th>Weight (kg)</th>
-            <th>Date</th>
-            <th>Action</th>
-        </tr>
-        <?php while ($bm = $bm_result->fetch_assoc()): ?>
-            <tr>
-                <td><?php echo $bm['Height']; ?></td>
-                <td><?php echo $bm['Weight']; ?></td>
-                <td><?php echo $bm['Date_of_measurement']; ?></td>
-                <td>
-                    <button type="button" onclick="confirmDelete(<?php echo $bm['Measurement_ID']; ?>)">Delete</button>
-                </td>
-            </tr>
-        <?php endwhile; ?>
-    </table>
-<?php else: ?>
-    <p>No body measurements recorded.</p>
-<?php endif; ?>
+    <!-- Member Info Form -->
+    <div class="card">
+        <h3>Your Information</h3>
+        <form method="POST" onsubmit="return confirmUpdate('profile');">
+            <table class="table">
+                <tr>
+                    <th>Email</th>
+                    <td><input type="email" name="email" class="form-control" value="<?php echo htmlspecialchars($user['Email']); ?>" readonly required></td>
+                </tr>
+                <tr>
+                    <th>Address</th>
+                    <td><textarea name="address" rows="3" class="form-control" readonly required><?php echo htmlspecialchars($user['Address']); ?></textarea></td>
+                </tr>
+                <tr>
+                    <th>Age</th>
+                    <td><input type="number" name="age" class="form-control" value="<?php echo htmlspecialchars($user['Age']); ?>" readonly required></td>
+                </tr>
+                <tr>
+                    <th>Password</th>
+                    <td><input type="text" name="password" class="form-control" value="<?php echo htmlspecialchars($user['Password']); ?>" readonly required></td>
+                </tr>
+                <tr>
+                    <th>Gender</th>
+                    <td><input type="text" name="gender" class="form-control" value="<?php echo htmlspecialchars($user['Gender']); ?>" readonly></td>
+                </tr>
+            </table>
 
-<!-- Navigation -->
-<br>
-<ul>
-    <li><a href="../../logout.php">Logout</a></li>
-</ul>
+            <div class="action-buttons">
+                <button type="button" id="editBtn" class="btn btn-primary" onclick="enableEditRow('profile')">Edit</button>
+                <button type="submit" name="update" id="updateBtn" class="btn btn-success" style="display: none;">Update</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Body Measurements Table -->
+    <div class="card">
+        <h3>Your Body Measurements</h3>
+        <?php if ($bm_result->num_rows > 0): ?>
+            <table class="table">
+                <tr>
+                    <th>Height (cm)</th>
+                    <th>Weight (kg)</th>
+                    <th>Date</th>
+                    <th>Action</th>
+                </tr>
+                <?php while ($bm = $bm_result->fetch_assoc()): ?>
+                    <tr>
+                        <td><?php echo $bm['Height']; ?></td>
+                        <td><?php echo $bm['Weight']; ?></td>
+                        <td><?php echo $bm['Date_of_measurement']; ?></td>
+                        <td>
+                            <button type="button" class="btn btn-primary" onclick="confirmDelete(<?php echo $bm['Measurement_ID']; ?>, 'measurement')">Delete</button>
+                        </td>
+                    </tr>
+                <?php endwhile; ?>
+            </table>
+        <?php else: ?>
+            <p>No body measurements recorded.</p>
+        <?php endif; ?>
+    </div>
+
+    <!-- Navigation -->
+    <div class="navigation">
+        <a href="../../logout.php" class="btn btn-primary">Logout</a>
+    </div>
+</div>
+
+<script>
+    // Specific functions for this page
+    function enableEditRow(rowId) {
+        const fields = ['email', 'address', 'age', 'password'];
+        fields.forEach(name => {
+            const field = document.querySelector(`[name="${name}"]`);
+            if (field) {
+                field.removeAttribute('readonly');
+                field.classList.remove('readonly');
+            }
+        });
+        document.getElementById('editBtn').style.display = 'none';
+        document.getElementById('updateBtn').style.display = 'inline';
+    }
+</script>
 
 </body>
 </html>

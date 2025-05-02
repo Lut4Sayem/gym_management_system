@@ -19,29 +19,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $created_by = $_POST['created_by'];
 
     if (isset($_POST['update'])) {
-        // Update query
         $sql = "UPDATE membership_plan SET Name='$name', Duration='$duration', Amount='$amount', Created_by='$created_by' WHERE Plan_id='$plan_id'";
     } else {
-        // Insert query
         $sql = "INSERT INTO membership_plan (Plan_id, Name, Duration, Amount, Created_by) VALUES ('$plan_id', '$name', '$duration', '$amount', '$created_by')";
     }
 
     if ($conn->query($sql) === TRUE) {
-        echo "<p style='color: green;'>Membership plan saved successfully.</p>";
+        echo "<p class='message success'>Membership plan saved successfully.</p>";
     } else {
-        echo "<p style='color: red;'>Error: " . $conn->error . "</p>";
+        echo "<p class='message error'>Error: " . $conn->error . "</p>";
     }
 }
 
 // Handle Delete
 if (isset($_GET['delete'])) {
     $delete_id = $_GET['delete'];
-    $sql = "DELETE FROM membership_plan WHERE Plan_id='$delete_id'";
-    $conn->query($sql);
+    $conn->query("DELETE FROM membership_plan WHERE Plan_id='$delete_id'");
 }
 
 // Fetch all membership plans
 $result = $conn->query("SELECT * FROM membership_plan");
+
 // If edit is triggered
 $edit_plan = null;
 if (isset($_GET['edit'])) {
@@ -56,75 +54,106 @@ if (isset($_GET['edit'])) {
 <head>
     <meta charset="UTF-8">
     <title>Manage Membership Plans</title>
-    <script>
-        function confirmDelete(planId) {
-            if (confirm("Are you sure you want to delete this plan?")) {
-                window.location.href = '?delete=' + planId;
-            }
+    <link rel="stylesheet" href="../../assets/css/style.css">
+    <style>
+        /* Page-specific background - keeping this inline to ensure it works */
+        body {
+            background-image: url('../../images/getimg_ai_img-Xon6oqcqWms7Iv4DJHIfh.jpeg');
+            background-size: cover;
+            background-position: center;
         }
-    </script>
+    </style>
+    <script src="../../assets/js/script.js"></script>
 </head>
 <body>
+
+<div class="container" style="background: rgba(255, 255, 255, 0.95); border-radius: 10px; padding: 30px; margin-top: 60px;">
     <h2>Manage Membership Plans</h2>
 
-    <h3><?php echo $edit_plan ? "Update Membership Plan" : "Add New Membership Plan"; ?></h3>
-    <form method="POST">
-        <label>Plan ID:</label><br>
-        <input type="number" name="plan_id" value="<?php echo $edit_plan['Plan_id'] ?? ''; ?>" required <?php echo $edit_plan ? 'readonly' : ''; ?>><br><br>
+    <div class="card">
+        <h3><?php echo $edit_plan ? "Update Membership Plan" : "Add New Membership Plan"; ?></h3>
+        <form method="POST">
+            <div class="form-group">
+                <label>Plan ID:</label>
+                <input type="number" name="plan_id" class="form-control" 
+                       value="<?php echo $edit_plan['Plan_id'] ?? ''; ?>" 
+                       required <?php echo $edit_plan ? 'readonly' : ''; ?>>
+            </div>
 
-        <label>Name:</label><br>
-        <input type="text" name="name" value="<?php echo $edit_plan['Name'] ?? ''; ?>" required><br><br>
+            <div class="form-group">
+                <label>Name:</label>
+                <input type="text" name="name" class="form-control" 
+                       value="<?php echo $edit_plan['Name'] ?? ''; ?>" required>
+            </div>
 
-        <label>Duration (Days):</label><br>
-        <input type="number" name="duration" value="<?php echo $edit_plan['Duration'] ?? ''; ?>" required><br><br>
+            <div class="form-group">
+                <label>Duration (Days):</label>
+                <input type="number" name="duration" class="form-control" 
+                       value="<?php echo $edit_plan['Duration'] ?? ''; ?>" required>
+            </div>
 
-        <label>Amount:</label><br>
-        <input type="number" step="0.01" name="amount" value="<?php echo $edit_plan['Amount'] ?? ''; ?>" required><br><br>
+            <div class="form-group">
+                <label>Amount:</label>
+                <input type="number" step="0.01" name="amount" class="form-control" 
+                       value="<?php echo $edit_plan['Amount'] ?? ''; ?>" required>
+            </div>
 
-        <label>Created By (Admin ID):</label><br>
-        <input type="number" name="created_by" value="<?php echo $edit_plan['Created_by'] ?? ''; ?>" required><br><br>
+            <div class="form-group">
+                <label>Created By (Admin ID):</label>
+                <input type="number" name="created_by" class="form-control" 
+                       value="<?php echo $edit_plan['Created_by'] ?? ''; ?>" required>
+            </div>
 
-        <?php if ($edit_plan): ?>
-            <input type="submit" name="update" value="Update Plan">
-        <?php else: ?>
-            <input type="submit" value="Add Plan">
-        <?php endif; ?>
-    </form>
+            <div class="form-buttons">
+                <?php if ($edit_plan): ?>
+                    <button type="submit" name="update" class="btn btn-success">Update Plan</button>
+                <?php else: ?>
+                    <button type="submit" class="btn btn-success">Add Plan</button>
+                <?php endif; ?>
+            </div>
+        </form>
+    </div>
 
-    <h3>All Membership Plans</h3>
-    <table border="1" cellpadding="8" cellspacing="0">
-        <tr>
-            <th>Plan ID</th>
-            <th>Name</th>
-            <th>Duration</th>
-            <th>Amount</th>
-            <th>Created By</th>
-            <th>Actions</th>
-        </tr>
-        <?php if ($result->num_rows > 0): ?>
-            <?php while ($row = $result->fetch_assoc()): ?>
+    <div class="card">
+        <h3>All Membership Plans</h3>
+        <table class="table">
+            <thead>
                 <tr>
-                    <td><?php echo $row['Plan_id']; ?></td>
-                    <td><?php echo $row['Name']; ?></td>
-                    <td><?php echo $row['Duration']; ?></td>
-                    <td><?php echo $row['Amount']; ?></td>
-                    <td><?php echo $row['Created_by']; ?></td>
-                    <td>
-                        <a href="?edit=<?php echo $row['Plan_id']; ?>">Edit</a> |
-                        <a href="#" onclick="confirmDelete(<?php echo $row['Plan_id']; ?>)">Delete</a>
-                    </td>
+                    <th>Plan ID</th>
+                    <th>Name</th>
+                    <th>Duration</th>
+                    <th>Amount</th>
+                    <th>Created By</th>
+                    <th>Actions</th>
                 </tr>
-            <?php endwhile; ?>
-        <?php else: ?>
-            <tr><td colspan="6">No plans found.</td></tr>
-        <?php endif; ?>
-    </table>
+            </thead>
+            <tbody>
+                <?php if ($result->num_rows > 0): ?>
+                    <?php while ($row = $result->fetch_assoc()): ?>
+                        <tr>
+                            <td><?php echo $row['Plan_id']; ?></td>
+                            <td><?php echo $row['Name']; ?></td>
+                            <td><?php echo $row['Duration']; ?> days</td>
+                            <td>৳<?php echo number_format($row['Amount'], 2); ?></td>
+                            <td><?php echo $row['Created_by']; ?></td>
+                            <td>
+                                <a href="?edit=<?php echo $row['Plan_id']; ?>" class="btn btn-primary">Edit</a>
+                                <a href="#" onclick="confirmDelete(<?php echo $row['Plan_id']; ?>, 'plan')" class="btn btn-danger">Delete</a>
+                            </td>
+                        </tr>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <tr><td colspan="6">No plans found.</td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
 
-    <br>
-    <ul>
-        <li><a href="../../logout.php">Logout</a></li>
-        <li><a href="admin.php">Back to Admin Dashboard</a></li>
-    </ul>
+    <div class="navigation">
+        <a href="admin.php" class="btn btn-primary">Back to Admin Dashboard</a>
+        <a href="../../logout.php" class="btn btn-danger">Logout</a>
+    </div>
+</div>
+
 </body>
 </html>
-<?php $conn->close(); ?>
