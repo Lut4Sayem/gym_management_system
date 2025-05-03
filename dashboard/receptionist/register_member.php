@@ -2,32 +2,66 @@
 require_once('../../includes/session_check.php');
 require_once('../../includes/db_connect.php');
 
+$error = '';
+$success = '';
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = $_POST['name'];
-    $email = $_POST['email'];
-    $age = $_POST['age'];
-    $gender = $_POST['gender'];
-    $address = $_POST['address'];
-    $password = $_POST['password'];
+    $name = $_POST['name'] ?? '';
+    $email = $_POST['email'] ?? '';
+    $age = $_POST['age'] ?? '';
+    $gender = $_POST['gender'] ?? '';
+    $address = $_POST['address'] ?? '';
+    $password = $_POST['password'] ?? '';
     $date_of_joining = date('Y-m-d');
 
-    // Insert into User table
-    $stmt1 = $conn->prepare("INSERT INTO User (Name, Email, Age, Gender, Address, Password, User_type) VALUES (?, ?, ?, ?, ?, ?, 'Member')");
-    $stmt1->bind_param("ssisss", $name, $email, $age, $gender, $address, $password);
-    $stmt1->execute();
-    $member_id = $stmt1->insert_id; // get the new user ID
-    $stmt1->close();
+    // Validate inputs
+    if (empty($name) || empty($email) || empty($age) || empty($gender) || empty($address) || empty($password)) {
+        $error = "All fields are required";
+    } else {
+        // Start transaction
+        $conn->begin_transaction();
 
-    // Insert into Member table
-    $stmt2 = $conn->prepare("INSERT INTO Member (Member_ID, Date_of_joining) VALUES (?, ?)");
-    $stmt2->bind_param("is", $member_id, $date_of_joining);
-    $stmt2->execute();
-    $stmt2->close();
+        try {
+            // Hash password
+            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
-    // Redirect to generate_receipts.php with preselected member ID
-    header("Location: generate_receipts.php?member_id=" . $member_id);
-    exit();
+            // Insert into User table
+            $stmt1 = $conn->prepare("INSERT INTO User (Name, Email, Age, Gender, Address, Password, User_type) 
+                                   VALUES (?, ?, ?, ?, ?, ?, 'Member')");
+            $stmt1->bind_param("ssisss", $name, $email, $age, $gender, $address, $hashed_password);
+            
+            if (!$stmt1->execute()) {
+                throw new Exception("Failed to create user: " . $stmt1->error);
+            }
+            
+            $member_id = $stmt1->insert_id;
+            $stmt1->close();
+
+            // Insert into Member table
+            $stmt2 = $conn->prepare("INSERT INTO Member (Member_ID, Date_of_joining) VALUES (?, ?)");
+            $stmt2->bind_param("is", $member_id, $date_of_joining);
+            
+            if (!$stmt2->execute()) {
+                throw new Exception("Failed to create member record: " . $stmt2->error);
+            }
+            
+            $stmt2->close();
+
+            // Commit transaction
+            $conn->commit();
+            
+            // Set success message and redirect
+            $_SESSION['success_message'] = "Member registered successfully!";
+            header("Location: generate_receipts.php?member_id=" . $member_id);
+            exit();
+            
+        } catch (Exception $e) {
+            // Rollback on error
+            $conn->rollback();
+            $error = $e->getMessage();
+        }
+    }
 }
 ?>
 
@@ -56,11 +90,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .back-link {
             margin-top: 20px;
         }
+        .error {
+            color: red;
+            margin-bottom: 15px;
+        }
+        .success {
+            color: green;
+            margin-bottom: 15px;
+        }
     </style>
 </head>
 <body>
 
 <h2>Register New Member</h2>
+
+<?php if (!empty($error)): ?>
+    <div class="error"><?php echo htmlspecialchars($error); ?></div>
+<?php endif; ?>
 
 <form method="POST">
     <label>Name:
@@ -72,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </label>
 
     <label>Age:
-        <input type="number" name="age" required>
+        <input type="number" name="age" min="12" max="120" required>
     </label>
 
     <label>Gender:
@@ -89,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </label>
 
     <label>Password:
-        <input type="text" name="password" required>
+        <input type="password" name="password" minlength="6" required>
     </label>
 
     <button type="submit">Register Member</button>
