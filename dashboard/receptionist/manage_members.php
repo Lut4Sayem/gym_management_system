@@ -26,27 +26,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $stmt = $conn->prepare("UPDATE User SET Name=?, Email=?, Age=?, Gender=?, Address=? WHERE ID=?");
         $stmt->bind_param("ssissi", $name, $email, $age, $gender, $address, $update_id);
-        $stmt->execute();
+        
+        if ($stmt->execute()) {
+            $_SESSION['success_message'] = 'User updated successfully.';
+        } else {
+            $_SESSION['error_message'] = 'Error updating user: ' . $conn->error;
+        }
         $stmt->close();
-
-        echo "<script>alert('User updated successfully.'); window.location='manage_members.php';</script>";
+        header("Location: manage_members.php");
         exit();
     }
 
     // Handle delete
     if (isset($_POST['delete_id'])) {
         $delete_id = (int) $_POST['delete_id'];
-
-        // Step 1: Remove from dependent tables in order to satisfy FK constraints
-        $conn->query("DELETE FROM member WHERE Member_ID = $delete_id");
-        $conn->query("DELETE FROM trainer WHERE Trainer_ID = $delete_id");
-        $conn->query("DELETE FROM receptionist WHERE Receptionist_ID = $delete_id");
-        $conn->query("DELETE FROM admin WHERE Admin_id = $delete_id"); // Only needed for safety
-
-        // Step 2: Now delete from User
-        $conn->query("DELETE FROM User WHERE ID = $delete_id");
-
-        echo "<script>alert('User deleted successfully.'); window.location='manage_members.php';</script>";
+        
+        // Start transaction
+        $conn->begin_transaction();
+        
+        try {
+            // Delete from dependent tables
+            $tables = ['Member', 'Trainer', 'Receptionist', 'Admin'];
+            foreach ($tables as $table) {
+                $field = $table . '_ID';
+                $stmt = $conn->prepare("DELETE FROM $table WHERE $field = ?");
+                $stmt->bind_param("i", $delete_id);
+                $stmt->execute();
+                $stmt->close();
+            }
+            
+            // Delete from User
+            $stmt = $conn->prepare("DELETE FROM User WHERE ID = ?");
+            $stmt->bind_param("i", $delete_id);
+            $stmt->execute();
+            $stmt->close();
+            
+            // Commit transaction
+            $conn->commit();
+            $_SESSION['success_message'] = 'User deleted successfully.';
+        } catch (Exception $e) {
+            // Rollback on error
+            $conn->rollback();
+            $_SESSION['error_message'] = 'Error deleting user: ' . $e->getMessage();
+        }
+        
+        header("Location: manage_members.php");
         exit();
     }
 }
@@ -73,6 +97,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .action-btns button {
             margin-right: 5px;
         }
+        .success {
+            color: green;
+            margin: 10px 0;
+        }
+        .error {
+            color: red;
+            margin: 10px 0;
+        }
     </style>
     <script>
         function enableEdit(rowId) {
@@ -83,10 +115,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             });
             document.getElementById(`editBtn_${rowId}`).style.display = 'none';
             document.getElementById(`saveBtn_${rowId}`).style.display = 'inline';
+            document.getElementById(`deleteBtn_${rowId}`).style.display = 'none';
         }
 
         function confirmDelete() {
-            return confirm("Are you sure you want to delete this user?");
+            return confirm("Are you sure you want to delete this user? This action cannot be undone.");
         }
 
         function confirmUpdate() {
@@ -97,6 +130,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body>
 
 <h2>Manage Users (Non-Admins)</h2>
+
+<?php if (isset($_SESSION['success_message'])): ?>
+    <div class="success"><?php echo $_SESSION['success_message']; unset($_SESSION['success_message']); ?></div>
+<?php endif; ?>
+
+<?php if (isset($_SESSION['error_message'])): ?>
+    <div class="error"><?php echo $_SESSION['error_message']; unset($_SESSION['error_message']); ?></div>
+<?php endif; ?>
 
 <table>
     <tr>
@@ -130,11 +171,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="hidden" name="update_id" value="<?php echo $row['ID']; ?>">
                     <button type="button" id="editBtn_<?php echo $row['ID']; ?>" onclick="enableEdit(<?php echo $row['ID']; ?>)">Edit</button>
                     <button type="submit" id="saveBtn_<?php echo $row['ID']; ?>" style="display:none;">Save</button>
+                </td>
             </form>
-            <form method="POST" onsubmit="return confirmDelete();" style="display:inline;">
-                <input type="hidden" name="delete_id" value="<?php echo $row['ID']; ?>">
-                <button type="submit">Delete</button>
-            </form>
+            <td>
+                <form method="POST" onsubmit="return confirmDelete();">
+                    <input type="hidden" name="delete_id" value="<?php echo $row['ID']; ?>">
+                    <button type="submit" id="deleteBtn_<?php echo $row['ID']; ?>">Delete</button>
+                </form>
             </td>
         </tr>
     <?php endwhile; ?>
