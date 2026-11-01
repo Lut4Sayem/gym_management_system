@@ -1,148 +1,128 @@
 <?php
 require_once('../../includes/session_check.php');
 require_once('../../includes/db_connect.php');
+require_role('Receptionist');
 
 $error = '';
-$success = '';
 
-// Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = $_POST['name'] ?? '';
-    $email = $_POST['email'] ?? '';
-    $age = $_POST['age'] ?? '';
+    $name = trim($_POST['name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $age = (int) ($_POST['age'] ?? 0);
     $gender = $_POST['gender'] ?? '';
-    $address = $_POST['address'] ?? '';
+    $address = trim($_POST['address'] ?? '');
     $password = $_POST['password'] ?? '';
-    $date_of_joining = date('Y-m-d');
+    $trainer_id = (int) ($_POST['trainer_id'] ?? 0);
 
-    // Validate inputs
-    if (empty($name) || empty($email) || empty($age) || empty($gender) || empty($address) || empty($password)) {
-        $error = "All fields are required";
+    if ($name === '' || $address === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = 'Please fill in name, a valid email and address.';
+    } elseif ($age < 12 || $age > 120) {
+        $error = 'Age must be between 12 and 120.';
+    } elseif (!in_array($gender, ['Male', 'Female', 'Other'], true)) {
+        $error = 'Please pick a gender.';
+    } elseif (strlen($password) < 6) {
+        $error = 'Password must be at least 6 characters.';
     } else {
-        // Start transaction
         $conn->begin_transaction();
-
         try {
-            // Hash password
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+            $hash = password_hash($password, PASSWORD_DEFAULT);
+            $stmt = $conn->prepare("INSERT INTO user (Name, Email, Age, Gender, Address, Password, User_type) VALUES (?, ?, ?, ?, ?, ?, 'Member')");
+            $stmt->bind_param("ssisss", $name, $email, $age, $gender, $address, $hash);
+            $stmt->execute();
+            $member_id = $stmt->insert_id;
 
-            // Insert into User table
-            $stmt1 = $conn->prepare("INSERT INTO User (Name, Email, Age, Gender, Address, Password, User_type) 
-                                   VALUES (?, ?, ?, ?, ?, ?, 'Member')");
-            $stmt1->bind_param("ssisss", $name, $email, $age, $gender, $address, $hashed_password);
-            
-            if (!$stmt1->execute()) {
-                throw new Exception("Failed to create user: " . $stmt1->error);
+            $today = date('Y-m-d');
+            $stmt = $conn->prepare("INSERT INTO member (Member_ID, Date_of_joining) VALUES (?, ?)");
+            $stmt->bind_param("is", $member_id, $today);
+            $stmt->execute();
+
+            if ($trainer_id > 0) {
+                $stmt = $conn->prepare("INSERT INTO trains (Member_ID, Trainer_ID) VALUES (?, ?)");
+                $stmt->bind_param("ii", $member_id, $trainer_id);
+                $stmt->execute();
             }
-            
-            $member_id = $stmt1->insert_id;
-            $stmt1->close();
 
-            // Insert into Member table
-            $stmt2 = $conn->prepare("INSERT INTO Member (Member_ID, Date_of_joining) VALUES (?, ?)");
-            $stmt2->bind_param("is", $member_id, $date_of_joining);
-            
-            if (!$stmt2->execute()) {
-                throw new Exception("Failed to create member record: " . $stmt2->error);
-            }
-            
-            $stmt2->close();
-
-            // Commit transaction
             $conn->commit();
-            
-            // Set success message and redirect
-            $_SESSION['success_message'] = "Member registered successfully!";
+            $_SESSION['success_message'] = "Member registered. Now generate their first receipt.";
             header("Location: generate_receipts.php?member_id=" . $member_id);
             exit();
-            
-        } catch (Exception $e) {
-            // Rollback on error
+        } catch (mysqli_sql_exception $ex) {
             $conn->rollback();
-            $error = $e->getMessage();
+            $error = $ex->getCode() === 1062 ? 'An account with that email already exists.' : 'Could not register member: ' . $ex->getMessage();
         }
     }
 }
-?>
 
+$trainers = $conn->query("SELECT t.Trainer_ID, u.Name FROM trainer t JOIN user u ON u.ID = t.Trainer_ID ORDER BY u.Name");
+$old = fn($key) => e($_POST[$key] ?? '');
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Register New Member | Receptionist Panel</title>
-    <style>
-        form {
-            width: 60%;
-        }
-        label {
-            display: block;
-            margin-top: 12px;
-        }
-        input, textarea, select {
-            width: 100%;
-            padding: 8px;
-            margin-top: 4px;
-        }
-        button {
-            margin-top: 20px;
-            padding: 10px 20px;
-        }
-        .back-link {
-            margin-top: 20px;
-        }
-        .error {
-            color: red;
-            margin-bottom: 15px;
-        }
-        .success {
-            color: green;
-            margin-bottom: 15px;
-        }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Register Member | Gym Management System</title>
+    <link rel="stylesheet" href="../../assets/css/style.css">
 </head>
-<body>
+<body class="page-with-bg">
 
-<h2>Register New Member</h2>
+<div class="container">
+    <h2>Register New Member</h2>
 
-<?php if (!empty($error)): ?>
-    <div class="error"><?php echo htmlspecialchars($error); ?></div>
-<?php endif; ?>
+    <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
 
-<form method="POST">
-    <label>Name:
-        <input type="text" name="name" required>
-    </label>
+    <div class="card">
+        <form method="POST">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Name:</label>
+                    <input type="text" name="name" class="form-control" value="<?= $old('name') ?>" required>
+                </div>
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" name="email" class="form-control" value="<?= $old('email') ?>" required>
+                </div>
+                <div class="form-group">
+                    <label>Age:</label>
+                    <input type="number" name="age" min="12" max="120" class="form-control" value="<?= $old('age') ?>" required>
+                </div>
+                <div class="form-group">
+                    <label>Gender:</label>
+                    <select name="gender" class="form-control" required>
+                        <option value="">-- Select --</option>
+                        <?php foreach (['Male', 'Female', 'Other'] as $g): ?>
+                            <option value="<?= $g ?>" <?= ($_POST['gender'] ?? '') === $g ? 'selected' : '' ?>><?= $g ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Assign Trainer (optional):</label>
+                    <select name="trainer_id" class="form-control">
+                        <option value="0">-- None --</option>
+                        <?php while ($t = $trainers->fetch_assoc()): ?>
+                            <option value="<?= e($t['Trainer_ID']) ?>" <?= (int) ($_POST['trainer_id'] ?? 0) === (int) $t['Trainer_ID'] ? 'selected' : '' ?>>
+                                <?= e($t['Name']) ?>
+                            </option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Password:</label>
+                    <input type="password" name="password" minlength="6" class="form-control" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Address:</label>
+                <textarea name="address" rows="2" class="form-control" required><?= $old('address') ?></textarea>
+            </div>
+            <button type="submit" class="btn btn-success">Register Member</button>
+        </form>
+    </div>
 
-    <label>Email:
-        <input type="email" name="email" required>
-    </label>
-
-    <label>Age:
-        <input type="number" name="age" min="12" max="120" required>
-    </label>
-
-    <label>Gender:
-        <select name="gender" required>
-            <option value="">-- Select Gender --</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Other">Other</option>
-        </select>
-    </label>
-
-    <label>Address:
-        <textarea name="address" rows="3" required></textarea>
-    </label>
-
-    <label>Password:
-        <input type="password" name="password" minlength="6" required>
-    </label>
-
-    <button type="submit">Register Member</button>
-</form>
-
-<div class="back-link">
-    <a href="receptionist.php">← Back to Dashboard</a>
+    <div class="navigation">
+        <a href="receptionist.php" class="btn btn-primary">Back to Dashboard</a>
+        <a href="../../logout.php" class="btn btn-danger">Logout</a>
+    </div>
 </div>
 
 </body>

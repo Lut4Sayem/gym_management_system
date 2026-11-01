@@ -1,196 +1,182 @@
 <?php
-// --------------------------------------------
-// Session & DB Initialization
-// --------------------------------------------
 require_once('../../includes/session_check.php');
 require_once('../../includes/db_connect.php');
+require_role('Member');
 
-// Get logged-in user's ID from session
-$user_id = $_SESSION['user_id'] ?? null;
-if (!$user_id) {
-    header("Location: /GYM_MANAGEMENT_SYSTEM/login.php");
-    exit();
-}
+$user_id = $_SESSION['user_id'];
+$error = '';
 
-// --------------------------------------------
-// Fetch member (user) information
-// --------------------------------------------
-$user_stmt = $conn->prepare("SELECT * FROM User WHERE ID = ? AND User_type = 'Member'");
-$user_stmt->bind_param("i", $user_id);
-$user_stmt->execute();
-$user_result = $user_stmt->get_result();
-$user = $user_result->fetch_assoc();
-$user_stmt->close();
-
-if (!$user) {
-    echo "Member not found.";
-    exit();
-}
-
-// --------------------------------------------
-// Handle profile update (email, address, age, password)
-// --------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
-    $email = $_POST['email'];
-    $address = $_POST['address'];
-    $age = $_POST['age'];
-    $password = $_POST['password']; // not hashed as per instruction
+    $email = trim($_POST['email'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $age = (int) ($_POST['age'] ?? 0);
+    $new_password = $_POST['new_password'] ?? '';
 
-    $update_stmt = $conn->prepare("UPDATE User SET Email = ?, Address = ?, Age = ?, Password = ? WHERE ID = ?");
-    $update_stmt->bind_param("ssisi", $email, $address, $age, $password, $user_id);
-    $update_stmt->execute();
-    $update_stmt->close();
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = 'Please enter a valid email.';
+    } elseif ($age < 12 || $age > 120) {
+        $error = 'Age must be between 12 and 120.';
+    } elseif ($new_password !== '' && strlen($new_password) < 6) {
+        $error = 'New password must be at least 6 characters.';
+    } else {
+        try {
+            $stmt = $conn->prepare("UPDATE user SET Email = ?, Address = ?, Age = ? WHERE ID = ?");
+            $stmt->bind_param("ssii", $email, $address, $age, $user_id);
+            $stmt->execute();
 
-    echo "<script>alert('Information updated successfully.'); window.location='member.php';</script>";
-    exit();
+            if ($new_password !== '') {
+                $hash = password_hash($new_password, PASSWORD_DEFAULT);
+                $stmt = $conn->prepare("UPDATE user SET Password = ? WHERE ID = ?");
+                $stmt->bind_param("si", $hash, $user_id);
+                $stmt->execute();
+            }
+            $_SESSION['success_message'] = 'Your information was updated.';
+            header('Location: member.php');
+            exit();
+        } catch (mysqli_sql_exception $ex) {
+            $error = $ex->getCode() === 1062 ? 'That email is already used by another account.' : 'Could not update your information.';
+        }
+    }
 }
 
-// --------------------------------------------
-// Fetch membership plan info
-// --------------------------------------------
-$plan_stmt = $conn->prepare("
-    SELECT mp.Name, mp.Duration, mp.Amount
-    FROM membership_plan mp
-    JOIN uses u ON mp.Plan_id = u.Plan_ID
+$stmt = $conn->prepare("SELECT u.*, m.Date_of_joining FROM user u JOIN member m ON m.Member_ID = u.ID WHERE u.ID = ?");
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$user = $stmt->get_result()->fetch_assoc();
+if (!$user) {
+    exit('Member record not found. Please contact the front desk.');
+}
+
+// Current plan + when it runs out (last payment for that plan + its duration).
+$stmt = $conn->prepare("
+    SELECT mp.Name, mp.Duration, mp.Amount,
+           MAX(r.Date_of_purchase) AS Last_paid,
+           DATE_ADD(MAX(r.Date_of_purchase), INTERVAL mp.Duration DAY) AS Valid_until
+    FROM uses u
+    JOIN membership_plan mp ON mp.Plan_id = u.Plan_ID
+    LEFT JOIN receipt r ON r.Member_id = u.Member_ID AND r.Plan_id = u.Plan_ID
     WHERE u.Member_ID = ?
+    GROUP BY mp.Plan_id, mp.Name, mp.Duration, mp.Amount
+    LIMIT 1
 ");
-$plan_stmt->bind_param("i", $user_id);
-$plan_stmt->execute();
-$plan_result = $plan_stmt->get_result();
-$plan = $plan_result->fetch_assoc();
-$plan_stmt->close();
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$plan = $stmt->get_result()->fetch_assoc();
 
-// --------------------------------------------
-// Fetch body measurements for the logged-in member
-// --------------------------------------------
-$bm_stmt = $conn->prepare("
-    SELECT Measurement_ID, Height, Weight, Date_of_measurement
-    FROM body_measurement
-    WHERE Member_ID = ?
-    ORDER BY Date_of_measurement DESC
+$stmt = $conn->prepare("
+    SELECT u.Name, t.Shift_start, t.Shift_end
+    FROM trains tr JOIN trainer t ON t.Trainer_ID = tr.Trainer_ID JOIN user u ON u.ID = t.Trainer_ID
+    WHERE tr.Member_ID = ? LIMIT 1
 ");
-$bm_stmt->bind_param("i", $user_id);
-$bm_stmt->execute();
-$bm_result = $bm_stmt->get_result();
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$trainer = $stmt->get_result()->fetch_assoc();
+
+$stmt = $conn->prepare("SELECT Height, Weight, Date_of_measurement FROM body_measurement WHERE Member_ID = ? ORDER BY Date_of_measurement DESC, Measurement_ID DESC");
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$measurements = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+$success = $_SESSION['success_message'] ?? '';
+unset($_SESSION['success_message']);
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Member Dashboard | Gym Management System</title>
     <link rel="stylesheet" href="../../assets/css/style.css">
-    <style>
-        /* Page-specific background - keeping this inline to ensure it works */
-        body {
-            background-image: url('../../images/getimg_ai_img-Xon6oqcqWms7Iv4DJHIfh.jpeg');
-            background-size: cover;
-            background-position: center;
-        }
-    </style>
     <script src="../../assets/js/script.js"></script>
 </head>
-<body>
+<body class="page-with-bg">
 
-<div class="container" style="background: rgba(255, 255, 255, 0.95); border-radius: 10px; padding: 30px; margin-top: 60px;">
-    <h2>Welcome, <?php echo htmlspecialchars($user['Name']); ?>!</h2>
+<div class="container">
+    <h2>Welcome, <?= e($user['Name']) ?>!</h2>
 
-    <!-- Membership Plan Info -->
+    <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
+    <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
+
     <div class="card">
-        <h3>Your Membership Plan</h3>
+        <h3>Your Membership</h3>
         <?php if ($plan): ?>
-            <table class="table">
-                <tr><th>Plan Name</th><td><?php echo $plan['Name']; ?></td></tr>
-                <tr><th>Duration</th><td><?php echo $plan['Duration']; ?> days</td></tr>
-                <tr><th>Amount</th><td>৳<?php echo $plan['Amount']; ?></td></tr>
-            </table>
+            <div class="table-wrap">
+                <table class="table">
+                    <tr><th>Plan</th><td><?= e($plan['Name']) ?> (<?= e($plan['Duration']) ?> days, ৳<?= number_format((float) $plan['Amount'], 2) ?>)</td></tr>
+                    <tr><th>Last payment</th><td><?= e($plan['Last_paid'] ?? 'No receipt on file') ?></td></tr>
+                    <?php if ($plan['Valid_until']): ?>
+                        <tr><th>Valid until</th><td>
+                            <?= e($plan['Valid_until']) ?>
+                            <?php if ($plan['Valid_until'] < date('Y-m-d')): ?><strong style="color:#dc3545;">(expired — please renew at the front desk)</strong><?php endif; ?>
+                        </td></tr>
+                    <?php endif; ?>
+                    <tr><th>Trainer</th><td>
+                        <?= $trainer ? e($trainer['Name']) . ' (' . e(substr($trainer['Shift_start'], 0, 5)) . '–' . e(substr($trainer['Shift_end'], 0, 5)) . ')' : 'Not assigned yet' ?>
+                    </td></tr>
+                    <tr><th>Member since</th><td><?= e($user['Date_of_joining']) ?></td></tr>
+                </table>
+            </div>
         <?php else: ?>
-            <p>You are not assigned a membership plan.</p>
+            <p>You don't have a membership plan yet. Visit the front desk to sign up.</p>
         <?php endif; ?>
     </div>
 
-    <!-- Member Info Form -->
-    <div class="card">
+    <div class="card" id="profile">
         <h3>Your Information</h3>
-        <form method="POST" onsubmit="return confirmUpdate('profile');">
-            <table class="table">
-                <tr>
-                    <th>Email</th>
-                    <td><input type="email" name="email" class="form-control" value="<?php echo htmlspecialchars($user['Email']); ?>" readonly required></td>
-                </tr>
-                <tr>
-                    <th>Address</th>
-                    <td><textarea name="address" rows="3" class="form-control" readonly required><?php echo htmlspecialchars($user['Address']); ?></textarea></td>
-                </tr>
-                <tr>
-                    <th>Age</th>
-                    <td><input type="number" name="age" class="form-control" value="<?php echo htmlspecialchars($user['Age']); ?>" readonly required></td>
-                </tr>
-                <tr>
-                    <th>Password</th>
-                    <td><input type="text" name="password" class="form-control" value="<?php echo htmlspecialchars($user['Password']); ?>" readonly required></td>
-                </tr>
-                <tr>
-                    <th>Gender</th>
-                    <td><input type="text" name="gender" class="form-control" value="<?php echo htmlspecialchars($user['Gender']); ?>" readonly></td>
-                </tr>
-            </table>
-
-            <div class="action-buttons">
-                <button type="button" id="editBtn" class="btn btn-primary" onclick="enableEditRow('profile')">Edit</button>
-                <button type="submit" name="update" id="updateBtn" class="btn btn-success" style="display: none;">Update</button>
+        <form method="POST" onsubmit="return confirmUpdate('profile')">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" name="email" class="form-control" value="<?= e($user['Email']) ?>" readonly required>
+                </div>
+                <div class="form-group">
+                    <label>Age:</label>
+                    <input type="number" name="age" min="12" max="120" class="form-control" value="<?= e($user['Age']) ?>" readonly required>
+                </div>
+                <div class="form-group">
+                    <label>Gender:</label>
+                    <input type="text" class="form-control" value="<?= e($user['Gender']) ?>" disabled>
+                </div>
+                <div class="form-group">
+                    <label>New password (leave blank to keep):</label>
+                    <input type="password" name="new_password" minlength="6" class="form-control" autocomplete="new-password" readonly>
+                </div>
             </div>
+            <div class="form-group">
+                <label>Address:</label>
+                <textarea name="address" rows="2" class="form-control" readonly><?= e($user['Address']) ?></textarea>
+            </div>
+            <button type="button" class="btn btn-primary" data-role="edit" onclick="enableEdit('profile')">Edit</button>
+            <button type="submit" name="update" class="btn btn-success" data-role="save" style="display: none;">Save</button>
         </form>
     </div>
 
-    <!-- Body Measurements Table -->
     <div class="card">
-        <h3>Your Body Measurements</h3>
-        <?php if ($bm_result->num_rows > 0): ?>
-            <table class="table">
-                <tr>
-                    <th>Height (cm)</th>
-                    <th>Weight (kg)</th>
-                    <th>Date</th>
-                    <th>Action</th>
-                </tr>
-                <?php while ($bm = $bm_result->fetch_assoc()): ?>
-                    <tr>
-                        <td><?php echo $bm['Height']; ?></td>
-                        <td><?php echo $bm['Weight']; ?></td>
-                        <td><?php echo $bm['Date_of_measurement']; ?></td>
-                        <td>
-                            <button type="button" class="btn btn-primary" onclick="confirmDelete(<?php echo $bm['Measurement_ID']; ?>, 'measurement')">Delete</button>
-                        </td>
-                    </tr>
-                <?php endwhile; ?>
-            </table>
+        <h3>Your Progress</h3>
+        <?php if ($measurements): ?>
+            <div class="table-wrap">
+                <table class="table">
+                    <tr><th>Date</th><th>Height (cm)</th><th>Weight (kg)</th><th>BMI</th></tr>
+                    <?php foreach ($measurements as $m): ?>
+                        <tr>
+                            <td><?= e($m['Date_of_measurement']) ?></td>
+                            <td><?= e($m['Height']) ?></td>
+                            <td><?= e($m['Weight']) ?></td>
+                            <td><?= $m['Height'] > 0 ? number_format($m['Weight'] / (($m['Height'] / 100) ** 2), 1) : '—' ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </table>
+            </div>
+            <p class="muted">Your trainer records these. Ask them if something looks wrong.</p>
         <?php else: ?>
-            <p>No body measurements recorded.</p>
+            <p>No measurements recorded yet.</p>
         <?php endif; ?>
     </div>
 
-    <!-- Navigation -->
     <div class="navigation">
-        <a href="../../logout.php" class="btn btn-primary">Logout</a>
+        <a href="../../logout.php" class="btn btn-danger">Logout</a>
     </div>
 </div>
-
-<script>
-    // Specific functions for this page
-    function enableEditRow(rowId) {
-        const fields = ['email', 'address', 'age', 'password'];
-        fields.forEach(name => {
-            const field = document.querySelector(`[name="${name}"]`);
-            if (field) {
-                field.removeAttribute('readonly');
-                field.classList.remove('readonly');
-            }
-        });
-        document.getElementById('editBtn').style.display = 'none';
-        document.getElementById('updateBtn').style.display = 'inline';
-    }
-</script>
 
 </body>
 </html>

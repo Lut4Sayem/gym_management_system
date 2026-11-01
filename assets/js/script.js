@@ -1,94 +1,33 @@
-/**
- * GYM MANAGEMENT SYSTEM - CORE FUNCTIONS
- * 
- * Basic reusable functions for common operations
- * Maintains simple functionality to avoid suspicion
- */
+// Shared helpers for the Gym Management System pages.
 
-// ======================
-// CONFIRMATION DIALOGS
-// ======================
-
-/**
- * Generic confirmation for delete actions
- * @param {string} [itemName='item'] - Name of item being deleted
- * @returns {boolean} True if confirmed, false if canceled
- */
+// Usage: <form onsubmit="return confirmDelete('plan')">
 function confirmDelete(itemName = 'item') {
-    return confirm(`Are you sure you want to delete this ${itemName}?`);
+    return confirm(`Are you sure you want to delete this ${itemName}? This cannot be undone.`);
 }
 
-/**
- * Generic confirmation for update actions
- * @param {string} [itemName='item'] - Name of item being updated
- * @returns {boolean} True if confirmed, false if canceled
- */
 function confirmUpdate(itemName = 'item') {
-    return confirm(`Confirm updating this ${itemName}'s information?`);
+    return confirm(`Save changes to this ${itemName}?`);
 }
 
-// ======================
-// FORM EDITING FUNCTIONS
-// ======================
-
-/**
- * Enables editing for a table row
- * @param {string} rowId - ID of the row to enable editing for
- */
-function enableEdit(rowId) {
-    // Get all editable fields in the row
-    const fields = document.querySelectorAll(
-        `#row_${rowId} input:not([type="hidden"]), 
-         #row_${rowId} textarea, 
-         #row_${rowId} select`
-    );
-
-    // Enable each field
-    fields.forEach(field => {
+// Unlocks every field inside the element with this id, and swaps the
+// Edit button (data-role="edit") for the Save button (data-role="save").
+function enableEdit(containerId) {
+    const box = document.getElementById(containerId);
+    if (!box) return;
+    box.querySelectorAll('input:not([type="hidden"]), textarea, select').forEach(field => {
         field.removeAttribute('readonly');
         field.removeAttribute('disabled');
         field.classList.remove('readonly');
     });
-
-    // Toggle button visibility
-    document.getElementById(`editBtn_${rowId}`)?.style.display = 'none';
-    document.getElementById(`saveBtn_${rowId}`)?.style.display = 'inline';
+    box.querySelectorAll('[data-role="edit"]').forEach(btn => { btn.style.display = 'none'; });
+    box.querySelectorAll('[data-role="save"]').forEach(btn => { btn.style.display = 'inline-block'; });
 }
 
-/**
- * Disables editing for a table row
- * @param {string} rowId - ID of the row to disable editing for
- */
-function disableEdit(rowId) {
-    // Get all fields in the row
-    const fields = document.querySelectorAll(
-        `#row_${rowId} input:not([type="hidden"]), 
-         #row_${rowId} textarea, 
-         #row_${rowId} select`
-    );
-
-    // Disable each field
-    fields.forEach(field => {
-        field.setAttribute('readonly', true);
-        field.classList.add('readonly');
-    });
-
-    // Toggle button visibility
-    document.getElementById(`editBtn_${rowId}`)?.style.display = 'inline';
-    document.getElementById(`saveBtn_${rowId}`)?.style.display = 'none';
-}
-
-// ======================
-// UTILITY FUNCTIONS
-// ======================
-
-/**
- * Toggles visibility of an element
- * @param {string} elementId - ID of element to toggle
- */
-function toggleVisibility(elementId) {
-    const element = document.getElementById(elementId);
-    if (element) {
-        element.style.display = element.style.display === 'none' ? 'block' : 'none';
-    }
+// Shows/hides an element; used for collapsible profile sections.
+function toggleVisibility(elementId, button) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const hidden = el.style.display === 'none' || getComputedStyle(el).display === 'none';
+    el.style.display = hidden ? 'block' : 'none';
+    if (button) button.textContent = hidden ? 'Hide Details' : 'Show Details';
 }
