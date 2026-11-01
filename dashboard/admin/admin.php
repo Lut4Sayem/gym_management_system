@@ -1,90 +1,85 @@
 <?php
 require_once('../../includes/session_check.php');
 require_once('../../includes/db_connect.php');
+require_role('Admin');
 
-$user_id = $_SESSION['user_id'] ?? null;
+$user_id = $_SESSION['user_id'];
+$error = '';
 
-// Fetch admin user info
-$sql = "SELECT * FROM User WHERE ID = ?";
-$stmt = $conn->prepare($sql);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
+    $name = trim($_POST['name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $age = (int) ($_POST['age'] ?? 0);
+    $gender = $_POST['gender'] ?? '';
+    $address = trim($_POST['address'] ?? '');
+
+    if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = 'Please enter a name and a valid email.';
+    } elseif (!in_array($gender, ['Male', 'Female', 'Other'], true)) {
+        $error = 'Please pick a gender.';
+    } else {
+        try {
+            $stmt = $conn->prepare("UPDATE user SET Name=?, Email=?, Age=?, Gender=?, Address=? WHERE ID=?");
+            $stmt->bind_param("ssissi", $name, $email, $age, $gender, $address, $user_id);
+            $stmt->execute();
+            $stmt->close();
+            $_SESSION['success_message'] = 'Profile updated.';
+            header('Location: admin.php');
+            exit();
+        } catch (mysqli_sql_exception $ex) {
+            $error = $ex->getCode() === 1062 ? 'That email is already used by another account.' : 'Could not update profile.';
+        }
+    }
+}
+
+$stmt = $conn->prepare("SELECT * FROM user WHERE ID = ?");
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
-$result = $stmt->get_result();
-$admin = $result->fetch_assoc();
+$admin = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
-// Handle update
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
-    $name = $_POST['name'];
-    $email = $_POST['email'];
-    $age = $_POST['age'];
-    $gender = $_POST['gender'];
-    $address = $_POST['address'];
+// Quick numbers for the dashboard.
+$counts = $conn->query("
+    SELECT
+        (SELECT COUNT(*) FROM member) AS members,
+        (SELECT COUNT(*) FROM trainer) AS trainers,
+        (SELECT COUNT(*) FROM gym_equipment) AS equipment,
+        (SELECT COALESCE(SUM(Amount_paid), 0) FROM receipt) AS revenue
+")->fetch_assoc();
 
-    $update_sql = "UPDATE User SET Name=?, Email=?, Age=?, Gender=?, Address=? WHERE ID=?";
-    $stmt = $conn->prepare($update_sql);
-    $stmt->bind_param("ssissi", $name, $email, $age, $gender, $address, $user_id);
-    $stmt->execute();
-    $stmt->close();
-
-    echo "<script>alert('Profile updated successfully!'); window.location='admin.php';</script>";
-    exit();
-}
+$success = $_SESSION['success_message'] ?? '';
+unset($_SESSION['success_message']);
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Admin Dashboard | Gym Management System</title>
     <link rel="stylesheet" href="../../assets/css/style.css">
-    <style>
-        /* Page-specific background - keeping this inline to ensure it works */
-        body {
-            background-image: url('../../images/getimg_ai_img-Xon6oqcqWms7Iv4DJHIfh.jpeg');
-            background-size: cover;
-            background-position: center;
-        }
-        .admin-functions-card {
-            margin-bottom: 30px;
-            border: 2px solid #007bff; /* Blue border to highlight */
-        }
-        .profile-card {
-            background: rgba(255,255,255,0.9);
-            padding: 20px;
-        }
-        .dashboard-links {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-        }
-        .dashboard-links a {
-            text-align: center;
-            padding: 12px;
-            font-weight: bold;
-        }
-        .profile-summary {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        .profile-details {
-            display: none; /* Hidden by default */
-            padding-top: 15px;
-            border-top: 1px solid #eee;
-        }
-    </style>
     <script src="../../assets/js/script.js"></script>
 </head>
-<body>
+<body class="page-with-bg">
 
-<div class="container" style="background: rgba(255, 255, 255, 0.95); border-radius: 10px; padding: 30px; margin-top: 60px;">
-    <h2>Welcome, <?= htmlspecialchars($admin['Name']); ?>!</h2>
+<div class="container">
+    <h2>Welcome, <?= e($admin['Name']) ?>!</h2>
 
-    <!-- PROMINENT ADMIN FUNCTIONS SECTION -->
-    <div class="card admin-functions-card">
-        <h3 style="color: #007bff; margin-bottom: 20px;">Admin Dashboard</h3>
+    <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
+    <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
+
+    <div class="card">
+        <h3>At a glance</h3>
+        <div class="table-wrap">
+            <table class="table">
+                <tr><th>Members</th><th>Trainers</th><th>Equipment items</th><th>Total revenue</th></tr>
+                <tr>
+                    <td><?= e($counts['members']) ?></td>
+                    <td><?= e($counts['trainers']) ?></td>
+                    <td><?= e($counts['equipment']) ?></td>
+                    <td>৳<?= number_format((float) $counts['revenue'], 2) ?></td>
+                </tr>
+            </table>
+        </div>
         <div class="dashboard-links">
             <a href="manage_equipment.php" class="btn btn-primary">Manage Equipment</a>
             <a href="manage_membership_plan.php" class="btn btn-primary">Manage Membership Plans</a>
@@ -92,83 +87,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
         </div>
     </div>
 
-    <!-- STREAMLINED PROFILE SECTION -->
-    <div class="card profile-card">
-        <div class="profile-summary">
-            <h3 style="margin: 0;">Your Profile</h3>
-            <button onclick="toggleProfileDetails()" class="btn btn-sm btn-outline-primary">
-                Show Details
-            </button>
-        </div>
-        
-        <div class="profile-details" id="profileDetails">
+    <div class="card">
+        <h3>Your Profile</h3>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="toggleVisibility('profileDetails', this)">
+            <?= $error ? 'Hide Details' : 'Show Details' ?>
+        </button>
+
+        <div id="profileDetails" style="display: <?= $error ? 'block' : 'none' ?>; margin-top: 15px;">
             <form method="POST">
-                <div class="form-group">
-                    <label>Name:</label>
-                    <input type="text" name="name" class="form-control" value="<?= htmlspecialchars($admin['Name']); ?>" readonly required>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Name:</label>
+                        <input type="text" name="name" class="form-control" value="<?= e($admin['Name']) ?>" readonly required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email:</label>
+                        <input type="email" name="email" class="form-control" value="<?= e($admin['Email']) ?>" readonly required>
+                    </div>
+                    <div class="form-group">
+                        <label>Age:</label>
+                        <input type="number" name="age" min="0" max="120" class="form-control" value="<?= e($admin['Age']) ?>" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Gender:</label>
+                        <select name="gender" class="form-control" disabled required>
+                            <?php foreach (['Male', 'Female', 'Other'] as $g): ?>
+                                <option value="<?= $g ?>" <?= $admin['Gender'] === $g ? 'selected' : '' ?>><?= $g ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
                 </div>
-                
-                <div class="form-group">
-                    <label>Email:</label>
-                    <input type="email" name="email" class="form-control" value="<?= htmlspecialchars($admin['Email']); ?>" readonly required>
-                </div>
-                
-                <div class="form-group">
-                    <label>Age:</label>
-                    <input type="number" name="age" class="form-control" value="<?= htmlspecialchars($admin['Age']); ?>" readonly>
-                </div>
-                
-                <div class="form-group">
-                    <label>Gender:</label>
-                    <select name="gender" class="form-control" disabled required>
-                        <option value="Male" <?= $admin['Gender'] === 'Male' ? 'selected' : ''; ?>>Male</option>
-                        <option value="Female" <?= $admin['Gender'] === 'Female' ? 'selected' : ''; ?>>Female</option>
-                        <option value="Other" <?= $admin['Gender'] === 'Other' ? 'selected' : ''; ?>>Other</option>
-                    </select>
-                </div>
-                
                 <div class="form-group">
                     <label>Address:</label>
-                    <textarea name="address" rows="2" class="form-control" readonly><?= htmlspecialchars($admin['Address']); ?></textarea>
+                    <textarea name="address" rows="2" class="form-control" readonly><?= e($admin['Address']) ?></textarea>
                 </div>
-
-                <div class="form-buttons">
-                    <button type="button" class="btn btn-sm btn-primary" id="editBtn" onclick="enableEditForm()">Edit Profile</button>
-                    <button type="submit" name="save" class="btn btn-sm btn-success" id="saveBtn" style="display: none;">Save Changes</button>
-                </div>
+                <button type="button" class="btn btn-sm btn-primary" data-role="edit" onclick="enableEdit('profileDetails')">Edit Profile</button>
+                <button type="submit" name="save" class="btn btn-sm btn-success" data-role="save" style="display: none;">Save Changes</button>
             </form>
         </div>
     </div>
 </div>
-
-<script>
-    // Toggle profile details visibility
-    function toggleProfileDetails() {
-        const details = document.getElementById('profileDetails');
-        const btn = document.querySelector('.profile-summary button');
-        
-        if (details.style.display === 'block') {
-            details.style.display = 'none';
-            btn.textContent = 'Show Details';
-        } else {
-            details.style.display = 'block';
-            btn.textContent = 'Hide Details';
-        }
-    }
-
-    // Original edit function
-    function enableEditForm() {
-        const fields = document.querySelectorAll('#profileDetails input, #profileDetails textarea, #profileDetails select');
-        fields.forEach(field => {
-            if (field.name !== 'save') {
-                field.removeAttribute('readonly');
-                field.removeAttribute('disabled');
-            }
-        });
-        document.getElementById('editBtn').style.display = 'none';
-        document.getElementById('saveBtn').style.display = 'inline-block';
-    }
-</script>
 
 </body>
 </html>

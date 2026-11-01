@@ -1,179 +1,161 @@
 <?php
 require_once('../../includes/session_check.php');
 require_once('../../includes/db_connect.php');
+require_role('Admin');
 
-// Delete Equipment
-if (isset($_GET['delete'])) {
-    $delete_id = $_GET['delete'];
-    $conn->query("DELETE FROM gym_equipment WHERE Equipment_ID = $delete_id");
-    header("Location: manage_equipment.php");
-    exit;
-}
+$admin_id = $_SESSION['user_id'];
+$error = '';
 
-// Update Equipment
-if (isset($_POST['update'])) {
-    $equipment_id = $_POST['equipment_id'];
-    $name = $_POST['name'];
-    $type = $_POST['type'];
-    $quantity = $_POST['quantity'];
-    $condition = $_POST['condition'];
-    $description = $_POST['description'];
-    $admin_id = $_POST['admin_id'];
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        if (isset($_POST['delete_id'])) {
+            $id = (int) $_POST['delete_id'];
+            $stmt = $conn->prepare("DELETE FROM gym_equipment WHERE Equipment_ID = ?");
+            $stmt->bind_param("i", $id);
+            $stmt->execute();
+            $_SESSION['success_message'] = 'Equipment deleted.';
+            header('Location: manage_equipment.php');
+            exit();
+        }
 
-    $sql = "UPDATE gym_equipment SET 
-                Name='$name', 
-                Type='$type', 
-                Quantity='$quantity', 
-                `Condition`='$condition', 
-                Description='$description', 
-                Admin_id='$admin_id'
-            WHERE Equipment_ID='$equipment_id'";
+        $id = (int) ($_POST['equipment_id'] ?? 0);
+        $name = trim($_POST['name'] ?? '');
+        $type = trim($_POST['type'] ?? '');
+        $quantity = (int) ($_POST['quantity'] ?? -1);
+        $condition = trim($_POST['condition'] ?? '');
+        $description = trim($_POST['description'] ?? '');
 
-    if ($conn->query($sql) === TRUE) {
-        echo "<script>alert('Equipment updated successfully!'); window.location='manage_equipment.php';</script>";
-        exit;
-    } else {
-        echo "<script>alert('Error: " . $conn->error . "');</script>";
+        if ($id <= 0 || $name === '' || $type === '' || $condition === '') {
+            $error = 'ID, name, type and condition are required.';
+        } elseif ($quantity < 0) {
+            $error = 'Quantity can\'t be negative.';
+        } elseif (isset($_POST['update'])) {
+            $stmt = $conn->prepare("UPDATE gym_equipment SET Name=?, Type=?, Quantity=?, `Condition`=?, Description=?, Admin_id=? WHERE Equipment_ID=?");
+            $stmt->bind_param("ssissii", $name, $type, $quantity, $condition, $description, $admin_id, $id);
+            $stmt->execute();
+            $_SESSION['success_message'] = 'Equipment updated.';
+            header('Location: manage_equipment.php');
+            exit();
+        } else {
+            $stmt = $conn->prepare("INSERT INTO gym_equipment (Equipment_ID, Name, Type, Quantity, `Condition`, Description, Admin_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("ississi", $id, $name, $type, $quantity, $condition, $description, $admin_id);
+            $stmt->execute();
+            $_SESSION['success_message'] = 'Equipment added.';
+            header('Location: manage_equipment.php');
+            exit();
+        }
+    } catch (mysqli_sql_exception $ex) {
+        $error = $ex->getCode() === 1062 ? 'An item with that Equipment ID already exists.' : 'Database error: ' . $ex->getMessage();
     }
 }
 
-// Insert New Equipment
-if (isset($_POST['add'])) {
-    $equipment_id = $_POST['equipment_id'];
-    $name = $_POST['name'];
-    $type = $_POST['type'];
-    $quantity = $_POST['quantity'];
-    $condition = $_POST['condition'];
-    $description = $_POST['description'];
-    $admin_id = $_POST['admin_id'];
-
-    $sql = "INSERT INTO gym_equipment (Equipment_ID, Name, Type, Quantity, `Condition`, Description, Admin_id)
-            VALUES ('$equipment_id', '$name', '$type', '$quantity', '$condition', '$description', '$admin_id')";
-
-    if ($conn->query($sql) === TRUE) {
-        echo "<script>alert('New equipment added successfully!'); window.location='manage_equipment.php';</script>";
-        exit;
-    } else {
-        echo "<script>alert('Error: " . $conn->error . "');</script>";
-    }
-}
-
-// Fetch row for editing
 $edit_row = null;
 if (isset($_GET['edit'])) {
-    $edit_id = $_GET['edit'];
-    $edit_result = $conn->query("SELECT * FROM gym_equipment WHERE Equipment_ID = $edit_id");
-    $edit_row = $edit_result->fetch_assoc();
+    $edit_id = (int) $_GET['edit'];
+    $stmt = $conn->prepare("SELECT * FROM gym_equipment WHERE Equipment_ID = ?");
+    $stmt->bind_param("i", $edit_id);
+    $stmt->execute();
+    $edit_row = $stmt->get_result()->fetch_assoc();
 }
+// Keep what the user typed if the save failed.
+$form = $error ? [
+    'Equipment_ID' => $_POST['equipment_id'] ?? '', 'Name' => $_POST['name'] ?? '', 'Type' => $_POST['type'] ?? '',
+    'Quantity' => $_POST['quantity'] ?? '', 'Condition' => $_POST['condition'] ?? '', 'Description' => $_POST['description'] ?? '',
+] : ($edit_row ?? []);
+$editing = $edit_row !== null || ($error && isset($_POST['update']));
 
-// Fetch all equipment
-$equipment_result = $conn->query("SELECT * FROM gym_equipment");
+$equipment = $conn->query("SELECT * FROM gym_equipment ORDER BY Equipment_ID");
+
+$success = $_SESSION['success_message'] ?? '';
+unset($_SESSION['success_message']);
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Manage Gym Equipment</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Manage Equipment | Gym Management System</title>
     <link rel="stylesheet" href="../../assets/css/style.css">
-    <style>
-        /* Page-specific background - keeping this inline to ensure it works */
-        body {
-            background-image: url('../../images/getimg_ai_img-Xon6oqcqWms7Iv4DJHIfh.jpeg');
-            background-size: cover;
-            background-position: center;
-        }
-    </style>
     <script src="../../assets/js/script.js"></script>
 </head>
-<body>
+<body class="page-with-bg">
 
-<div class="container" style="background: rgba(255, 255, 255, 0.95); border-radius: 10px; padding: 30px; margin-top: 60px;">
+<div class="container">
     <h2>Manage Gym Equipment</h2>
 
+    <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
+    <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
+
     <div class="card">
-        <h3><?php echo isset($edit_row) ? "Edit Equipment" : "Add New Equipment"; ?></h3>
+        <h3><?= $editing ? 'Edit Equipment' : 'Add New Equipment' ?></h3>
         <form method="POST">
-            <div class="form-group">
-                <label>Equipment ID:</label>
-                <input type="number" name="equipment_id" class="form-control" required 
-                       value="<?php echo $edit_row['Equipment_ID'] ?? ''; ?>" 
-                       <?php echo isset($edit_row) ? 'readonly' : ''; ?>>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Equipment ID:</label>
+                    <input type="number" name="equipment_id" min="1" class="form-control" required
+                           value="<?= e($form['Equipment_ID'] ?? '') ?>" <?= $editing ? 'readonly' : '' ?>>
+                </div>
+                <div class="form-group">
+                    <label>Name:</label>
+                    <input type="text" name="name" class="form-control" required value="<?= e($form['Name'] ?? '') ?>">
+                </div>
+                <div class="form-group">
+                    <label>Type:</label>
+                    <input type="text" name="type" class="form-control" required value="<?= e($form['Type'] ?? '') ?>">
+                </div>
+                <div class="form-group">
+                    <label>Quantity:</label>
+                    <input type="number" name="quantity" min="0" class="form-control" required value="<?= e($form['Quantity'] ?? '') ?>">
+                </div>
+                <div class="form-group">
+                    <label>Condition:</label>
+                    <input type="text" name="condition" class="form-control" required value="<?= e($form['Condition'] ?? '') ?>">
+                </div>
             </div>
-
-            <div class="form-group">
-                <label>Name:</label>
-                <input type="text" name="name" class="form-control" required value="<?php echo $edit_row['Name'] ?? ''; ?>">
-            </div>
-
-            <div class="form-group">
-                <label>Type:</label>
-                <input type="text" name="type" class="form-control" required value="<?php echo $edit_row['Type'] ?? ''; ?>">
-            </div>
-
-            <div class="form-group">
-                <label>Quantity:</label>
-                <input type="number" name="quantity" class="form-control" required value="<?php echo $edit_row['Quantity'] ?? ''; ?>">
-            </div>
-
-            <div class="form-group">
-                <label>Condition:</label>
-                <input type="text" name="condition" class="form-control" required value="<?php echo $edit_row['Condition'] ?? ''; ?>">
-            </div>
-
             <div class="form-group">
                 <label>Description:</label>
-                <textarea name="description" rows="4" class="form-control" required><?php echo $edit_row['Description'] ?? ''; ?></textarea>
+                <textarea name="description" rows="3" class="form-control"><?= e($form['Description'] ?? '') ?></textarea>
             </div>
-
-            <div class="form-group">
-                <label>Admin ID:</label>
-                <input type="number" name="admin_id" class="form-control" required value="<?php echo $edit_row['Admin_id'] ?? ''; ?>">
-            </div>
-
-            <div class="form-buttons">
-                <input type="submit" class="btn btn-success" name="<?php echo isset($edit_row) ? 'update' : 'add'; ?>" 
-                       value="<?php echo isset($edit_row) ? 'Update Equipment' : 'Add Equipment'; ?>">
-            </div>
+            <?php if ($editing): ?>
+                <button type="submit" name="update" class="btn btn-success">Update Equipment</button>
+                <a href="manage_equipment.php" class="btn btn-secondary">Cancel</a>
+            <?php else: ?>
+                <button type="submit" name="add" class="btn btn-success">Add Equipment</button>
+            <?php endif; ?>
         </form>
     </div>
 
     <div class="card">
         <h3>All Equipment</h3>
-        <table class="table">
-            <tr>
-                <th>Equipment ID</th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Quantity</th>
-                <th>Condition</th>
-                <th>Description</th>
-                <th>Admin ID</th>
-                <th>Actions</th>
-            </tr>
-
-            <?php
-            if ($equipment_result->num_rows > 0) {
-                while ($row = $equipment_result->fetch_assoc()) {
-                    echo "<tr>
-                            <td>{$row['Equipment_ID']}</td>
-                            <td>{$row['Name']}</td>
-                            <td>{$row['Type']}</td>
-                            <td>{$row['Quantity']}</td>
-                            <td>{$row['Condition']}</td>
-                            <td>{$row['Description']}</td>
-                            <td>{$row['Admin_id']}</td>
-                            <td>
-                                <a href='?edit={$row['Equipment_ID']}' class='btn btn-primary'>Edit</a>
-                                <a href='?delete={$row['Equipment_ID']}' onclick='return confirmDelete(\"equipment\");' class='btn btn-danger'>Delete</a>
-                            </td>
-                        </tr>";
-                }
-            } else {
-                echo "<tr><td colspan='8'>No equipment found.</td></tr>";
-            }
-            ?>
-        </table>
+        <div class="table-wrap">
+            <table class="table">
+                <tr>
+                    <th>ID</th><th>Name</th><th>Type</th><th>Quantity</th>
+                    <th>Condition</th><th>Description</th><th>Last edited by (Admin ID)</th><th>Actions</th>
+                </tr>
+                <?php if ($equipment->num_rows === 0): ?>
+                    <tr><td colspan="8">No equipment found.</td></tr>
+                <?php endif; ?>
+                <?php while ($row = $equipment->fetch_assoc()): ?>
+                    <tr>
+                        <td><?= e($row['Equipment_ID']) ?></td>
+                        <td><?= e($row['Name']) ?></td>
+                        <td><?= e($row['Type']) ?></td>
+                        <td><?= e($row['Quantity']) ?></td>
+                        <td><?= e($row['Condition']) ?></td>
+                        <td><?= e($row['Description']) ?></td>
+                        <td><?= e($row['Admin_id']) ?></td>
+                        <td>
+                            <a href="?edit=<?= e($row['Equipment_ID']) ?>" class="btn btn-sm btn-primary">Edit</a>
+                            <form method="POST" onsubmit="return confirmDelete('equipment')">
+                                <input type="hidden" name="delete_id" value="<?= e($row['Equipment_ID']) ?>">
+                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endwhile; ?>
+            </table>
+        </div>
     </div>
 
     <div class="navigation">
