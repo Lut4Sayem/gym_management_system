@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body class="page-with-bg login-page">
 
 <div class="login-container">
-    <img src="images/getimg_ai_img-Xon6oqcqWms7Iv4DJHIfh.jpeg" alt="Gym logo" class="login-logo">
+    <img src="images/gym-logo.jpeg" alt="Gym logo" class="login-logo">
     <h2 class="text-center">Login</h2>
 
     <?php if ($error): ?>

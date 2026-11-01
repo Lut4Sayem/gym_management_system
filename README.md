@@ -24,8 +24,6 @@ A web-based gym management system built with **PHP** and **MySQL/MariaDB**. Four
 4. If your MySQL user/password isn't the XAMPP default (`root` / empty), edit `includes/db_connect.php`.
 5. Visit `http://localhost/gym_management_system/`.
 
-> Already imported an older copy of the database? Drop it and re-import. The new SQL file adds auto-increment IDs and a unique email rule that registering members and generating receipts depend on.
-
 ## 🔑 Demo Logins
 
 | Role | Email | Password |
@@ -55,7 +53,7 @@ gym_management_system/
 │   ├── trainer/      trainer.php, manage_measurements.php
 │   └── member/       member.php
 ├── assets/css/style.css, assets/js/script.js
-├── images/
+├── images/gym-logo.jpeg
 └── tests/password_test.php
 ```
 
@@ -73,6 +71,8 @@ gym_management_system/
 ```
 php tests/password_test.php
 ```
+
+On Windows XAMPP, if `php` isn't on your PATH, use `C:\xampp\php\php.exe tests/password_test.php`.
 
 ## 👨‍💻 Contributors
 
